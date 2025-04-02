@@ -1,0 +1,81 @@
+--SHOW TASKS LIKE 'TSK_FELICIA_H_CPH_SSM_ACCT_HIST_TASKS%';
+--DESC TASK TSK_FELICIA_H_CPH_SSM_ACCT_HIST_TASKS;
+select *  from table(SBX_PSAS_DB.INFORMATION_SCHEMA.task_history(
+    scheduled_time_range_start=>dateadd('hour',-24,current_timestamp()),
+    result_limit => 10,
+    task_name=>'TSK_FELICIA_H_CPH_SSM_ACCT_HIST_TASKS'));
+    
+--alter task TSK_FELICIA_H_CPH_SSM_ACCT_HIST_TASKS resume; --It was by default suspended  ( run this command Only first time since by default its suspended)
+execute task TSK_FELICIA_H_CPH_SSM_ACCT_HIST_TASKS;
+
+--TASK
+CREATE OR REPLACE TASK TSK_FELICIA_H_CPH_SSM_ACCT_HIST_TASKS
+
+WAREHOUSE = SBX_EA_GENERAL_FR_WH
+SCHEDULE = 'USING CRON 50 6 * * 0-6 America/Chicago' -- 6:50 AM on weekdays
+TIMESTAMP_INPUT_FORMAT = 'YYYY-MM-DD HH24'
+AS
+
+CREATE OR REPLACE TABLE SBX_PSAS_DB.SALES_OPS_GOV.CPH_SSM_ACCT_HIST_TASKS AS
+
+WITH FINAL AS (
+
+SELECT LPAD(CAST(h.CUSTOMER_NUMBER AS STRING), 6, '0') AS CUSTOMER_NUMBER
+	,h.account_name AS ACCOUNTNAME_History
+	,h.account_owner AS ACCOUNTOWNER_History
+	,h.ssm
+	,h.region
+	,h.dispense_data
+	,h.delivery_state
+	,h.national_group_name
+	,h.chain_id
+	,h.national_subgroup_name
+	,h.parent_account
+	,h.customer_since
+	,h."GenericsConnect Customer?"
+	,h."GC-Acute Retail"
+	,h."GC-Acute RTL Viz"
+	,h."GC-LTC Customer?"
+	,h.ssm_parent_account
+	,h.account_id AS AccountID_History
+	,h.npi
+	,h.period
+	,h.date_assigned
+	,a.accountnumber
+    ,a.active_customer__c AS ActiveCustomer_Current
+	,a.name AS Account_Name
+	,a.owner_name__c AS AccountOwner_Current
+    ,a.do_not_call__c
+	,t.whatid
+	,t.id AS Task_ID
+    ,t.type
+	,t.dm_discussion__c
+	,t.subject
+    ,t.status
+    ,t.whoid
+	,CASE 
+		WHEN t.dm_discussion__c = 'true'
+			THEN 1
+		ELSE 0
+		END AS Discussion_with_decision_maker
+	,t.activitydate
+	,t.ownerid AS Activity_OwnerID
+	,TO_VARCHAR(t.activitydate, 'MM-01-YYYY') AS ACTIVITY_PERIOD
+    ,u.name AS Activity_OwnerName
+    ,u.short_title__c
+FROM SBX_PSAS_DB.SALES_OPS_GOV.T_SSM_ASSIGNMENT_HIST h
+LEFT JOIN PRD_ENT_PL_DATALAKE_DB.PHARMA2_SFDC.Account a ON LPAD(CAST(h.CUSTOMER_NUMBER AS STRING), 6, '0') = LPAD(CAST(a.accountnumber AS STRING), 6, '0')
+LEFT JOIN 
+( 
+    SELECT
+    t.*
+    FROM PRD_ENT_PL_DATALAKE_DB.PHARMA2_SFDC.V_TASK t
+    INNER JOIN PRD_ENT_PL_DATALAKE_DB.PHARMA2_SFDC.USERS u ON t.ownerid =u.id
+    WHERE u.short_title__c = 'ISM'    
+) t ON t.whatid =a.id   
+AND TO_VARCHAR(t.activitydate, 'MM-01-YYYY') = TO_VARCHAR(h.period, 'MM-01-YYYY')        
+LEFT JOIN PRD_ENT_PL_DATALAKE_DB.PHARMA2_SFDC.USERS u ON t.ownerid = u.id)
+
+SELECT * FROM FINAL
+
+
